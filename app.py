@@ -1,45 +1,57 @@
-from g4f.client import Client
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify
 import os
-client = Client()
+import requests
+import json
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'  # Set a secret key for session management
-PORT = int(os.environ.get('PORT', 5000))
+PORT = int(os.environ.get("PORT", 5000))
+
+
 @app.route("/")
 def home():
-    return render_template('index.html')  # Render the login page initially
+    return render_template("ChatBot.html")
 
-@app.route("/login", methods=['POST'])
-def login():
-    user_id = request.form['userId']
-    if user_id.strip() != '':
-        session['user_id'] = user_id  # Store user ID in session
-        return redirect(url_for('chatbot'))
-    else:
-        return redirect(url_for('home'))
 
-@app.route("/chatbot")
-def chatbot():
-    if 'user_id' not in session:
-        return redirect(url_for('home'))
-    return render_template('ChatBot.html')
-
-@app.route("/chat", methods=['POST'])
+@app.route("/chat", methods=["POST"])
 def chat():
-    user_input = request.json['message']
-    try:
-        response = client.chat.completions.create(
-            model="blackbox",
-            messages=[{"role": "user", "content": user_input}]
-        )
-        bot_response = response.choices[0].message.content.strip()
-    except AttributeError:
-        bot_response = "Sorry, there was an error processing your request."
-    except Exception as e:
-        bot_response = f"An error occurred: {str(e)}"
+    user_input = request.json["message"]
+
+    bot_response = None
+    last_error = None
     
+    try:
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": "Bearer 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",
+                "Content-Type": "application/json",
+            },
+            data=json.dumps(
+                {
+                    "model": "xiaomi/mimo-v2-flash:free",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": str(user_input),
+                        }
+                    ],
+                }
+            ),
+        )
+        
+        response_data = response.json()
+        bot_response = response_data["choices"][0]["message"]["content"]
+        print(f"User: {user_input}\nBot: {bot_response}")
+    except Exception as e:
+        last_error = str(e)
+        print(f"Error occurred: {last_error}")
+
+    if bot_response is None:
+        bot_response = "Sorry, the chatbot service is temporarily unavailable. Please try again later."
+        print(f"Request failed. Last error: {last_error}")
+
     return jsonify({"response": bot_response})
 
+
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=PORT)
+    app.run(host="0.0.0.0", port=PORT)
